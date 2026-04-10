@@ -116,7 +116,7 @@ nav {
 .nav-center li { display: flex; align-items: stretch; }
 
 .nav-center a {
-  color: var(--white);
+  color: rgba(255,255,255,0.6);
   text-decoration: none;
   font-size: 19px;
   font-weight: 700;
@@ -126,26 +126,9 @@ nav {
   display: flex;
   align-items: center;
   position: relative;
-  transition: color .18s;
+  transition: color .25s;
 }
-.nav-center a::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, var(--g1), var(--g2), var(--g3));
-  opacity: 0;
-  transition: opacity .22s ease;
-  z-index: -1;
-}
-.nav-center a:hover::before { opacity: 1; }
-
-.nav-center li + li a::after {
-  content: '';
-  position: absolute;
-  left: 0; top: 20%; bottom: 20%;
-  width: 1px;
-  background: rgba(255,255,255,0.1);
-}
+.nav-center a:hover { color: var(--white); }
 
 .nav-right {
   display: flex;
@@ -820,62 +803,81 @@ footer::after {
   function drawIridescentDrop(cx, cy, rx, ry, alpha, phase) {
     if (alpha < 0.005) return;
 
+    const W = rx * 2 + 4;
+    const H = ry * 2 + 4;
+    const x0 = cx - rx - 2;
+    const y0 = cy - ry - 2;
+
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    // Clip a la forma de elipse
+    // ── Clip a la elipse ─────────────────────
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.clip();
 
-    // Base — gradiente oscuro translúcido
-    const base = ctx.createRadialGradient(cx, cy - ry * 0.2, 0, cx, cy, Math.max(rx, ry));
-    base.addColorStop(0,   'rgba(255,180,120,0.55)');
-    base.addColorStop(0.4, 'rgba(220,30,80,0.6)');
-    base.addColorStop(1,   'rgba(80,0,30,0.7)');
+    // ── 1. Relleno base — casi transparente, tinte muy sutil ──
+    const base = ctx.createRadialGradient(cx, cy - ry * 0.3, 0, cx, cy, Math.max(rx, ry) * 1.1);
+    base.addColorStop(0,   'rgba(255,255,255,0.04)');
+    base.addColorStop(0.6, 'rgba(255,255,255,0.02)');
+    base.addColorStop(1,   'rgba(0,0,0,0.18)');
     ctx.fillStyle = base;
-    ctx.fillRect(cx - rx - 2, cy - ry - 2, rx * 2 + 4, ry * 2 + 4);
+    ctx.fillRect(x0, y0, W, H);
 
-    // Capa iridiscente 1 — shifts con phase
-    const iri1 = ctx.createLinearGradient(
-      cx - rx, cy,
-      cx + rx, cy
+    // ── 2. Iridiscencia animada — colores que cyclan suavemente ──
+    const h1 = (phase * 18) % 360;
+    const h2 = (h1 + 60) % 360;
+    const h3 = (h1 + 140) % 360;
+
+    const iri = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx, cy + ry);
+    iri.addColorStop(0,    `hsla(${h1},70%,75%,0.18)`);
+    iri.addColorStop(0.3,  `hsla(${h2},80%,80%,0.12)`);
+    iri.addColorStop(0.6,  `hsla(${h3},60%,70%,0.15)`);
+    iri.addColorStop(1,    `hsla(${h1},70%,65%,0.1)`);
+    ctx.fillStyle = iri;
+    ctx.fillRect(x0, y0, W, H);
+
+    // ── 3. Highlight principal — destello blanco arriba-izquierda ──
+    const hl1 = ctx.createRadialGradient(
+      cx - rx * 0.3, cy - ry * 0.45, 0,
+      cx - rx * 0.3, cy - ry * 0.45, rx * 0.7
     );
-    const hShift = (Math.sin(phase * 0.7) + 1) / 2;
-    iri1.addColorStop(0,          `hsla(${10  + hShift * 40},100%,60%,0.5)`);
-    iri1.addColorStop(0.35,       `hsla(${340 + hShift * 30},90%,55%,0.4)`);
-    iri1.addColorStop(0.65,       `hsla(${20  + hShift * 50},100%,65%,0.5)`);
-    iri1.addColorStop(1,          `hsla(${350 + hShift * 20},80%,45%,0.4)`);
-    ctx.fillStyle = iri1;
-    ctx.fillRect(cx - rx - 2, cy - ry - 2, rx * 2 + 4, ry * 2 + 4);
+    hl1.addColorStop(0,   'rgba(255,255,255,0.55)');
+    hl1.addColorStop(0.4, 'rgba(255,255,255,0.12)');
+    hl1.addColorStop(1,   'rgba(255,255,255,0)');
+    ctx.fillStyle = hl1;
+    ctx.fillRect(x0, y0, W, H);
 
-    // Capa iridiscente 2 — perpendicular
-    const iri2 = ctx.createLinearGradient(cx, cy - ry, cx, cy + ry);
-    const vShift = (Math.cos(phase * 0.5) + 1) / 2;
-    iri2.addColorStop(0,    `hsla(${30 + vShift * 60},100%,80%,0.3)`);
-    iri2.addColorStop(0.5,  `hsla(${355 + vShift * 40},90%,50%,0.15)`);
-    iri2.addColorStop(1,    `hsla(${15 + vShift * 30},100%,60%,0.25)`);
-    ctx.fillStyle = iri2;
-    ctx.fillRect(cx - rx - 2, cy - ry - 2, rx * 2 + 4, ry * 2 + 4);
-
-    // Highlight — destello blanco arriba-izquierda
-    const hl = ctx.createRadialGradient(
-      cx - rx * 0.35, cy - ry * 0.4, 0,
-      cx - rx * 0.35, cy - ry * 0.4, rx * 0.55
+    // ── 4. Micro-highlight — punto de luz pequeño y duro ──
+    const hl2 = ctx.createRadialGradient(
+      cx - rx * 0.5, cy - ry * 0.55, 0,
+      cx - rx * 0.5, cy - ry * 0.55, rx * 0.18
     );
-    hl.addColorStop(0,   'rgba(255,255,255,0.65)');
-    hl.addColorStop(0.5, 'rgba(255,255,255,0.1)');
-    hl.addColorStop(1,   'rgba(255,255,255,0)');
-    ctx.fillStyle = hl;
-    ctx.fillRect(cx - rx - 2, cy - ry - 2, rx * 2 + 4, ry * 2 + 4);
+    hl2.addColorStop(0,   'rgba(255,255,255,0.9)');
+    hl2.addColorStop(1,   'rgba(255,255,255,0)');
+    ctx.fillStyle = hl2;
+    ctx.fillRect(x0, y0, W, H);
 
-    // Borde interior sutil
+    // ── 5. Sombra interna en borde inferior — profundidad ──
+    const shadow = ctx.createLinearGradient(cx, cy, cx, cy + ry);
+    shadow.addColorStop(0,   'rgba(0,0,0,0)');
+    shadow.addColorStop(1,   'rgba(0,0,0,0.25)');
+    ctx.fillStyle = shadow;
+    ctx.fillRect(x0, y0, W, H);
+
+    // ── Borde exterior — línea fina glass ──────
     ctx.restore();
     ctx.save();
-    ctx.globalAlpha = alpha * 0.6;
+    ctx.globalAlpha = alpha * 0.7;
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,200,180,0.4)';
+
+    // Borde con gradiente para efecto glass
+    const borderGrad = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx, cy + ry);
+    borderGrad.addColorStop(0,   'rgba(255,255,255,0.6)');
+    borderGrad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+    borderGrad.addColorStop(1,   'rgba(255,255,255,0.05)');
+    ctx.strokeStyle = borderGrad;
     ctx.lineWidth = 1;
     ctx.stroke();
 
