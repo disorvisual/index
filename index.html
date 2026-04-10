@@ -20,6 +20,38 @@
 * { cursor: none !important; }
 a, button, input, textarea, select, label { cursor: none !important; }
 
+/* ─── LIQUID BLOB NAV ────────────────────── */
+.nav-blob {
+  position: absolute;
+  top: 0; left: 0;
+  width: 0; height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  filter: url(#blob-filter);
+  will-change: transform, width, left;
+}
+
+.nav-blob-inner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--g1), var(--g2), var(--g3));
+  transition: none;
+}
+
+.nav-center {
+  position: relative;
+}
+
+.nav-center a {
+  position: relative;
+  z-index: 1;
+}
+
 /* Halftone en textos de proyectos */
 .project-info-text {
   filter: url(#halftone);
@@ -280,6 +312,32 @@ nav {
   filter: url(#halftone);
   will-change: filter;
 }
+
+.project-client {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, var(--g1), var(--g2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.3rem;
+  line-height: 1.4;
+}
+
+.project-client::before {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 26px;
+  background: linear-gradient(180deg, var(--g2), transparent);
+  flex-shrink: 0;
+  margin-right: 4px;
+}
 .project-info::after {
   content: '';
   position: absolute;
@@ -495,16 +553,22 @@ footer::after {
   <defs>
     <!-- Halftone street: legible pero con grano y dispersión en bordes -->
     <filter id="halftone" x="-10%" y="-30%" width="120%" height="160%" color-interpolation-filters="sRGB">
-      <!-- Blur muy leve para suavizar antes del displacement -->
       <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" result="blurred"/>
-      <!-- Noise de baja frecuencia para dispersión en bordes tipo spray -->
       <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="3" seed="5" result="noise"/>
-      <!-- Displacement suave — solo mueve los bordes, el centro queda intacto -->
       <feDisplacementMap in="blurred" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
-      <!-- Threshold moderado: preserva el texto pero da los bordes duros -->
       <feComponentTransfer in="displaced">
         <feFuncA type="discrete" tableValues="0 0 0 1 1 1 1 1"/>
       </feComponentTransfer>
+    </filter>
+    <!-- Blob líquido para nav hover -->
+    <filter id="blob-filter" x="-30%" y="-50%" width="160%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" mode="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 22 -9" result="goo"/>
+      <feComposite in="SourceGraphic" in2="goo" operator="atop"/>
     </filter>
   </defs>
 </svg>
@@ -515,7 +579,8 @@ footer::after {
   <a href="#" class="nav-logo">
     <img src="iso_blanco@3x.png" alt="DISOR">
   </a>
-  <ul class="nav-center">
+  <ul class="nav-center" id="navCenter">
+    <div class="nav-blob" id="navBlob"><div class="nav-blob-inner"></div></div>
     <li><a href="#work">Work</a></li>
     <li><a href="#about">About</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -675,6 +740,7 @@ footer::after {
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
   const cursor = document.getElementById('cursor');
 
+  // Cursor
   document.addEventListener('pointermove', e => {
     cursor.style.left = e.clientX + 'px';
     cursor.style.top  = e.clientY + 'px';
@@ -688,6 +754,7 @@ footer::after {
     el.addEventListener('mouseleave', () => cursor.classList.remove('big'));
   });
 
+  // Hover proyectos SVG
   document.querySelectorAll('.project').forEach(p => {
     const svg = p.querySelector('svg');
     if (!svg) return;
@@ -699,6 +766,95 @@ footer::after {
       svg.style.transform = 'scale(1.03)';
       svg.style.filter = '';
     });
+  });
+
+  // ─── LIQUID BLOB ─────────────────────────────
+  const blob = document.getElementById('navBlob');
+  const navLinks = document.querySelectorAll('.nav-center a');
+  const navCenter = document.getElementById('navCenter');
+  const logo = document.querySelector('.nav-logo');
+
+  let blobActive = false;
+  let currentTarget = null;
+  let blobAnim = null;
+
+  function getRelativeRect(el, parent) {
+    const eRect = el.getBoundingClientRect();
+    const pRect = parent.getBoundingClientRect();
+    return {
+      left: eRect.left - pRect.left,
+      top: eRect.top - pRect.top,
+      width: eRect.width,
+      height: eRect.height,
+    };
+  }
+
+  function animateBlob(targetEl) {
+    if (blobAnim) cancelAnimationFrame(blobAnim);
+    const rect = getRelativeRect(targetEl, navCenter);
+
+    // Estado inicial del blob (posición logo)
+    const logoRect = getRelativeRect(logo, navCenter);
+    let bx = blobActive ? parseFloat(blob.style.left || logoRect.left) : logoRect.left + logoRect.width / 2;
+    let bw = blobActive ? parseFloat(blob.style.width || 60) : 60;
+
+    // Target: cubrir el link
+    const tx = rect.left;
+    const tw = rect.width;
+
+    blob.style.display = 'block';
+    blob.style.height = '100%';
+
+    function step() {
+      bx += (tx - bx) * 0.18;
+      bw += (tw - bw) * 0.18;
+
+      blob.style.left = bx + 'px';
+      blob.style.width = bw + 'px';
+
+      const inner = blob.querySelector('.nav-blob-inner');
+      inner.style.width = (bw + 24) + 'px';
+      inner.style.height = '100%';
+
+      if (Math.abs(bx - tx) > 0.5 || Math.abs(bw - tw) > 0.5) {
+        blobAnim = requestAnimationFrame(step);
+      }
+    }
+    blobActive = true;
+    blobAnim = requestAnimationFrame(step);
+  }
+
+  function hideBlob() {
+    if (blobAnim) cancelAnimationFrame(blobAnim);
+    let bw = parseFloat(blob.style.width || 0);
+    let bop = 1;
+
+    function shrink() {
+      bw += (0 - bw) * 0.15;
+      bop += (0 - bop) * 0.15;
+      blob.style.width = bw + 'px';
+      blob.style.opacity = bop;
+      if (bw > 1) {
+        blobAnim = requestAnimationFrame(shrink);
+      } else {
+        blob.style.display = 'none';
+        blob.style.opacity = '1';
+        blobActive = false;
+      }
+    }
+    blobAnim = requestAnimationFrame(shrink);
+  }
+
+  navLinks.forEach(link => {
+    link.addEventListener('mouseenter', () => {
+      currentTarget = link;
+      animateBlob(link);
+    });
+  });
+
+  navCenter.addEventListener('mouseleave', () => {
+    currentTarget = null;
+    hideBlob();
   });
 </script>
 
