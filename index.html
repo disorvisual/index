@@ -20,29 +20,7 @@
 * { cursor: none !important; }
 a, button, input, textarea, select, label { cursor: none !important; }
 
-/* ─── LIQUID BLOB NAV ────────────────────── */
-.nav-blob {
-  position: absolute;
-  top: 0; left: 0;
-  width: 0; height: 100%;
-  pointer-events: none;
-  z-index: 0;
-  filter: url(#blob-filter);
-  will-change: transform, width, left;
-}
-
-.nav-blob-inner {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 80px;
-  height: 52px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--g1), var(--g2), var(--g3));
-  transition: none;
-}
-
+/* ─── LIQUID DROP NAV ────────────────────── */
 .nav-center {
   position: relative;
 }
@@ -50,6 +28,15 @@ a, button, input, textarea, select, label { cursor: none !important; }
 .nav-center a {
   position: relative;
   z-index: 1;
+}
+
+/* El canvas del blob vive encima del nav entero */
+#liquidCanvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Halftone en textos de proyectos */
@@ -580,7 +567,7 @@ footer::after {
     <img src="iso_blanco@3x.png" alt="DISOR">
   </a>
   <ul class="nav-center" id="navCenter">
-    <div class="nav-blob" id="navBlob"><div class="nav-blob-inner"></div></div>
+    <canvas id="liquidCanvas"></canvas>
     <li><a href="#work">Work</a></li>
     <li><a href="#about">About</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -740,7 +727,7 @@ footer::after {
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
   const cursor = document.getElementById('cursor');
 
-  // Cursor
+  // ── Cursor ──────────────────────────────────
   document.addEventListener('pointermove', e => {
     cursor.style.left = e.clientX + 'px';
     cursor.style.top  = e.clientY + 'px';
@@ -754,108 +741,182 @@ footer::after {
     el.addEventListener('mouseleave', () => cursor.classList.remove('big'));
   });
 
-  // Hover proyectos SVG
   document.querySelectorAll('.project').forEach(p => {
     const svg = p.querySelector('svg');
     if (!svg) return;
-    p.addEventListener('mouseenter', () => {
-      svg.style.transform = 'scale(1)';
-      svg.style.filter = 'brightness(0.55)';
-    });
-    p.addEventListener('mouseleave', () => {
-      svg.style.transform = 'scale(1.03)';
-      svg.style.filter = '';
-    });
+    p.addEventListener('mouseenter', () => { svg.style.transform = 'scale(1)'; svg.style.filter = 'brightness(0.55)'; });
+    p.addEventListener('mouseleave', () => { svg.style.transform = 'scale(1.03)'; svg.style.filter = ''; });
   });
 
-  // ─── LIQUID BLOB ─────────────────────────────
-  const blob = document.getElementById('navBlob');
+  // ── Liquid Drop ─────────────────────────────
+  const canvas  = document.getElementById('liquidCanvas');
+  const ctx     = canvas.getContext('2d');
+  const navEl   = document.getElementById('navCenter');
   const navLinks = document.querySelectorAll('.nav-center a');
-  const navCenter = document.getElementById('navCenter');
-  const logo = document.querySelector('.nav-logo');
+  const logoEl  = document.querySelector('.nav-logo');
 
-  let blobActive = false;
-  let currentTarget = null;
-  let blobAnim = null;
+  // Estado de la gota
+  const drop = {
+    x: 0, y: 0,         // centro actual
+    tx: 0, ty: 0,        // target
+    rx: 28, ry: 20,      // radio actual X/Y
+    trx: 28, try: 20,    // radio target
+    alpha: 0,            // opacidad actual
+    talpha: 0,           // opacidad target
+    phase: 0,            // para la ondulación
+    active: false,
+  };
 
-  function getRelativeRect(el, parent) {
-    const eRect = el.getBoundingClientRect();
-    const pRect = parent.getBoundingClientRect();
+  function resizeCanvas() {
+    const r = navEl.getBoundingClientRect();
+    canvas.width  = r.width;
+    canvas.height = r.height;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  function getCenter(el) {
+    const nr = navEl.getBoundingClientRect();
+    const er = el.getBoundingClientRect();
     return {
-      left: eRect.left - pRect.left,
-      top: eRect.top - pRect.top,
-      width: eRect.width,
-      height: eRect.height,
+      x: er.left - nr.left + er.width  / 2,
+      y: er.top  - nr.top  + er.height / 2,
     };
   }
 
-  function animateBlob(targetEl) {
-    if (blobAnim) cancelAnimationFrame(blobAnim);
-    const rect = getRelativeRect(targetEl, navCenter);
-
-    // Estado inicial del blob (posición logo)
-    const logoRect = getRelativeRect(logo, navCenter);
-    let bx = blobActive ? parseFloat(blob.style.left || logoRect.left) : logoRect.left + logoRect.width / 2;
-    let bw = blobActive ? parseFloat(blob.style.width || 60) : 60;
-
-    // Target: cubrir el link
-    const tx = rect.left;
-    const tw = rect.width;
-
-    blob.style.display = 'block';
-    blob.style.height = '100%';
-
-    function step() {
-      bx += (tx - bx) * 0.18;
-      bw += (tw - bw) * 0.18;
-
-      blob.style.left = bx + 'px';
-      blob.style.width = bw + 'px';
-
-      const inner = blob.querySelector('.nav-blob-inner');
-      inner.style.width = (bw + 24) + 'px';
-      inner.style.height = '100%';
-
-      if (Math.abs(bx - tx) > 0.5 || Math.abs(bw - tw) > 0.5) {
-        blobAnim = requestAnimationFrame(step);
-      }
+  // Iniciar gota desde el logo
+  function startDrop(targetLink) {
+    const logo = getCenter(logoEl);
+    if (!drop.active) {
+      drop.x  = logo.x;
+      drop.y  = logo.y;
+      drop.rx = 18;
+      drop.ry = 14;
     }
-    blobActive = true;
-    blobAnim = requestAnimationFrame(step);
+    drop.active   = true;
+    drop.talpha   = 1;
+
+    const t = getCenter(targetLink);
+    drop.tx  = t.x;
+    drop.ty  = canvas.height / 2;
+    drop.trx = targetLink.getBoundingClientRect().width  / 2 + 8;
+    drop.try = canvas.height / 2 - 6;
   }
 
-  function hideBlob() {
-    if (blobAnim) cancelAnimationFrame(blobAnim);
-    let bw = parseFloat(blob.style.width || 0);
-    let bop = 1;
-
-    function shrink() {
-      bw += (0 - bw) * 0.15;
-      bop += (0 - bop) * 0.15;
-      blob.style.width = bw + 'px';
-      blob.style.opacity = bop;
-      if (bw > 1) {
-        blobAnim = requestAnimationFrame(shrink);
-      } else {
-        blob.style.display = 'none';
-        blob.style.opacity = '1';
-        blobActive = false;
-      }
-    }
-    blobAnim = requestAnimationFrame(shrink);
+  function hideDrop() {
+    drop.talpha = 0;
+    drop.trx    = 18;
+    drop.try    = 14;
   }
 
-  navLinks.forEach(link => {
-    link.addEventListener('mouseenter', () => {
-      currentTarget = link;
-      animateBlob(link);
-    });
+  navLinks.forEach(a => {
+    a.addEventListener('mouseenter', () => startDrop(a));
   });
+  navEl.addEventListener('mouseleave', () => hideDrop());
 
-  navCenter.addEventListener('mouseleave', () => {
-    currentTarget = null;
-    hideBlob();
-  });
+  // ── Render loop ─────────────────────────────
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function drawIridescentDrop(cx, cy, rx, ry, alpha, phase) {
+    if (alpha < 0.005) return;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Clip a la forma de elipse
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Base — gradiente oscuro translúcido
+    const base = ctx.createRadialGradient(cx, cy - ry * 0.2, 0, cx, cy, Math.max(rx, ry));
+    base.addColorStop(0,   'rgba(255,180,120,0.55)');
+    base.addColorStop(0.4, 'rgba(220,30,80,0.6)');
+    base.addColorStop(1,   'rgba(80,0,30,0.7)');
+    ctx.fillStyle = base;
+    ctx.fillRect(cx - rx - 2, cy - ry - 2, rx * 2 + 4, ry * 2 + 4);
+
+    // Capa iridiscente 1 — shifts con phase
+    const iri1 = ctx.createLinearGradient(
+      cx - rx, cy,
+      cx + rx, cy
+    );
+    const hShift = (Math.sin(phase * 0.7) + 1) / 2;
+    iri1.addColorStop(0,          `hsla(${10  + hShift * 40},100%,60%,0.5)`);
+    iri1.addColorStop(0.35,       `hsla(${340 + hShift * 30},90%,55%,0.4)`);
+    iri1.addColorStop(0.65,       `hsla(${20  + hShift * 50},100%,65%,0.5)`);
+    iri1.addColorStop(1,          `hsla(${350 + hShift * 20},80%,45%,0.4)`);
+    ctx.fillStyle = iri1;
+    ctx.fillRect(cx - rx - 2, cy - ry - 2, rx * 2 + 4, ry * 2 + 4);
+
+    // Capa iridiscente 2 — perpendicular
+    const iri2 = ctx.createLinearGradient(cx, cy - ry, cx, cy + ry);
+    const vShift = (Math.cos(phase * 0.5) + 1) / 2;
+    iri2.addColorStop(0,    `hsla(${30 + vShift * 60},100%,80%,0.3)`);
+    iri2.addColorStop(0.5,  `hsla(${355 + vShift * 40},90%,50%,0.15)`);
+    iri2.addColorStop(1,    `hsla(${15 + vShift * 30},100%,60%,0.25)`);
+    ctx.fillStyle = iri2;
+    ctx.fillRect(cx - rx - 2, cy - ry - 2, rx * 2 + 4, ry * 2 + 4);
+
+    // Highlight — destello blanco arriba-izquierda
+    const hl = ctx.createRadialGradient(
+      cx - rx * 0.35, cy - ry * 0.4, 0,
+      cx - rx * 0.35, cy - ry * 0.4, rx * 0.55
+    );
+    hl.addColorStop(0,   'rgba(255,255,255,0.65)');
+    hl.addColorStop(0.5, 'rgba(255,255,255,0.1)');
+    hl.addColorStop(1,   'rgba(255,255,255,0)');
+    ctx.fillStyle = hl;
+    ctx.fillRect(cx - rx - 2, cy - ry - 2, rx * 2 + 4, ry * 2 + 4);
+
+    // Borde interior sutil
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.6;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,200,180,0.4)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const sp = 0.13;
+    drop.x     = lerp(drop.x,     drop.tx,     sp);
+    drop.y     = lerp(drop.y,     drop.ty,     sp);
+    drop.rx    = lerp(drop.rx,    drop.trx,    sp);
+    drop.ry    = lerp(drop.ry,    drop.try,    sp);
+    drop.alpha = lerp(drop.alpha, drop.talpha, 0.1);
+    drop.phase += 0.04;
+
+    if (drop.alpha > 0.005) {
+      drawIridescentDrop(drop.x, drop.y, drop.rx, drop.ry, drop.alpha, drop.phase);
+    }
+
+    if (!drop.active && drop.alpha < 0.005) {
+      // Resetear posición al logo para el próximo trigger
+      const logo = getCenter(logoEl);
+      drop.x  = logo.x;
+      drop.y  = canvas.height / 2;
+      drop.rx = 18;
+      drop.ry = 14;
+    }
+
+    requestAnimationFrame(render);
+  }
+
+  // Inicializar posición en el logo
+  const logoC = getCenter(logoEl);
+  drop.x  = logoC.x;
+  drop.y  = canvas.height / 2;
+  drop.tx = logoC.x;
+  drop.ty = canvas.height / 2;
+
+  render();
 </script>
 
 </body>
