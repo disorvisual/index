@@ -493,31 +493,18 @@ footer::after {
 
 <svg width="0" height="0" style="position:absolute;overflow:hidden">
   <defs>
-    <!-- Halftone: convierte el texto en puntos que se dispersan en los bordes -->
-    <filter id="halftone" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-      <!-- 1. Blur suave para que los bordes se disuelvan -->
-      <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blurred"/>
-      <!-- 2. Turbulencia para darle irregularidad street -->
-      <feTurbulence type="fractalNoise" baseFrequency="0.04 0.06" numOctaves="2" seed="3" result="noise"/>
-      <!-- 3. Desplazar los píxeles con el noise — efecto dispersión -->
-      <feDisplacementMap in="blurred" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
-      <!-- 4. Threshold duro para convertir a blanco/negro puro -->
-      <feComponentTransfer in="displaced" result="thresholded">
-        <feFuncR type="discrete" tableValues="0 0 0 0 0 1 1 1"/>
-        <feFuncG type="discrete" tableValues="0 0 0 0 0 1 1 1"/>
-        <feFuncB type="discrete" tableValues="0 0 0 0 0 1 1 1"/>
-        <feFuncA type="discrete" tableValues="0 0 0 0 0 1 1 1"/>
+    <!-- Halftone street: legible pero con grano y dispersión en bordes -->
+    <filter id="halftone" x="-10%" y="-30%" width="120%" height="160%" color-interpolation-filters="sRGB">
+      <!-- Blur muy leve para suavizar antes del displacement -->
+      <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" result="blurred"/>
+      <!-- Noise de baja frecuencia para dispersión en bordes tipo spray -->
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="3" seed="5" result="noise"/>
+      <!-- Displacement suave — solo mueve los bordes, el centro queda intacto -->
+      <feDisplacementMap in="blurred" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
+      <!-- Threshold moderado: preserva el texto pero da los bordes duros -->
+      <feComponentTransfer in="displaced">
+        <feFuncA type="discrete" tableValues="0 0 0 1 1 1 1 1"/>
       </feComponentTransfer>
-      <!-- 5. Puntear — simula halftone con morfología -->
-      <feMorphology in="thresholded" operator="erode" radius="0.4" result="eroded"/>
-      <!-- 6. Turbulencia para textura de puntos irregular -->
-      <feTurbulence type="fractalNoise" baseFrequency="0.18 0.18" numOctaves="1" seed="7" result="dots"/>
-      <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 8 -3" in="dots" result="dotmask"/>
-      <!-- 7. Aplicar máscara de puntos sobre el texto -->
-      <feComposite in="eroded" in2="dotmask" operator="in" result="halftoned"/>
-      <!-- 8. Noise extra de dispersión en bordes -->
-      <feTurbulence type="turbulence" baseFrequency="0.9" numOctaves="4" seed="12" result="edgenoise"/>
-      <feDisplacementMap in="halftoned" in2="edgenoise" scale="3" xChannelSelector="R" yChannelSelector="G"/>
     </filter>
   </defs>
 </svg>
