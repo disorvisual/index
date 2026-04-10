@@ -30,14 +30,8 @@ a, button, input, textarea, select, label { cursor: none !important; }
   z-index: 1;
 }
 
-/* El canvas del blob vive encima del nav entero */
-#liquidCanvas {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-  z-index: 0;
-}
+/* canvas gestionado por JS */
+#liquidCanvas { position: fixed; pointer-events: none; z-index: 150; }
 
 /* Halftone en textos de proyectos */
 .project-info-text {
@@ -546,11 +540,30 @@ footer::after {
 
 <!-- NAV -->
 <nav>
-  <a href="#" class="nav-logo">
-    <img src="iso_blanco@3x.png" alt="DISOR">
+  <a href="#" class="nav-logo" id="navLogo">
+    <svg id="logoSvg" width="40" height="40" viewBox="0 0 263 262" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible">
+      <defs>
+        <linearGradient id="lg0" x1="112.645" y1="112.255" x2="156.685" y2="136.894" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#F07B58"/>
+          <stop offset="0.515" stop-color="#FE023F"/>
+          <stop offset="1" stop-color="#FE7F2A"/>
+        </linearGradient>
+        <linearGradient id="lg1" x1="171.168" y1="121.623" x2="193.188" y2="133.943" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#F07B58"/>
+          <stop offset="0.515" stop-color="#FE023F"/>
+          <stop offset="1" stop-color="#FE7F2A"/>
+        </linearGradient>
+      </defs>
+      <!-- Anillo exterior -->
+      <path d="M131.319 0C58.9756 0 0.328125 58.6475 0.328125 130.991C0.328125 203.335 58.9756 261.982 131.319 261.982C203.663 261.982 262.31 203.335 262.31 130.991C262.31 58.6475 203.663 0 131.319 0ZM131.319 209.689C117.097 209.689 103.752 205.915 92.2408 199.315C89.5497 198.093 87.0792 196.479 84.8942 194.54C78.7854 189.137 74.9317 181.235 74.9317 172.435C74.9317 164.757 77.8633 157.762 82.6742 152.515C83.1703 151.963 83.6965 151.437 84.2377 150.926C89.0436 145.679 91.9702 138.688 91.9702 131.016C91.9702 123.344 88.8181 115.832 83.6965 110.525C83.5712 110.4 83.451 110.274 83.3257 110.149C78.2041 104.847 75.052 97.6206 75.052 89.6576C75.052 80.0209 79.6724 71.4616 86.8236 66.0744C87.9261 65.2425 89.0937 64.4858 90.3115 63.8143C102.248 56.5027 116.29 52.2932 131.319 52.2932C174.782 52.2932 210.017 87.5278 210.017 130.991C210.017 174.454 174.782 209.689 131.319 209.689Z" fill="white"/>
+      <!-- Círculo grande con gradiente — origen de la gota -->
+      <circle id="dropOrigin" cx="131.319" cy="130.991" r="19.675" fill="url(#lg0)"/>
+      <!-- Punto pequeño -->
+      <circle cx="180.505" cy="130.991" r="9.838" fill="url(#lg1)"/>
+    </svg>
   </a>
+  <canvas id="liquidCanvas" style="position:fixed;pointer-events:none;z-index:150;top:0;left:0"></canvas>
   <ul class="nav-center" id="navCenter">
-    <canvas id="liquidCanvas"></canvas>
     <li><a href="#work">Work</a></li>
     <li><a href="#about">About</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -715,208 +728,229 @@ footer::after {
     cursor.style.left = e.clientX + 'px';
     cursor.style.top  = e.clientY + 'px';
   }, { passive: true });
-
   document.addEventListener('mouseleave', () => cursor.style.opacity = '0');
   document.addEventListener('mouseenter', () => cursor.style.opacity = '1');
-
   document.querySelectorAll('a, .project').forEach(el => {
     el.addEventListener('mouseenter', () => cursor.classList.add('big'));
     el.addEventListener('mouseleave', () => cursor.classList.remove('big'));
   });
-
   document.querySelectorAll('.project').forEach(p => {
     const svg = p.querySelector('svg');
     if (!svg) return;
-    p.addEventListener('mouseenter', () => { svg.style.transform = 'scale(1)'; svg.style.filter = 'brightness(0.55)'; });
-    p.addEventListener('mouseleave', () => { svg.style.transform = 'scale(1.03)'; svg.style.filter = ''; });
+    p.addEventListener('mouseenter', () => { svg.style.transform='scale(1)'; svg.style.filter='brightness(0.55)'; });
+    p.addEventListener('mouseleave', () => { svg.style.transform='scale(1.03)'; svg.style.filter=''; });
   });
 
   // ── Liquid Drop ─────────────────────────────
-  const canvas  = document.getElementById('liquidCanvas');
-  const ctx     = canvas.getContext('2d');
-  const navEl   = document.getElementById('navCenter');
+  const canvas   = document.getElementById('liquidCanvas');
+  const ctx      = canvas.getContext('2d');
+  const navEl    = document.getElementById('navCenter');
   const navLinks = document.querySelectorAll('.nav-center a');
-  const logoEl  = document.querySelector('.nav-logo');
-
-  // Estado de la gota
-  const drop = {
-    x: 0, y: 0,         // centro actual
-    tx: 0, ty: 0,        // target
-    rx: 28, ry: 20,      // radio actual X/Y
-    trx: 28, try: 20,    // radio target
-    alpha: 0,            // opacidad actual
-    talpha: 0,           // opacidad target
-    phase: 0,            // para la ondulación
-    active: false,
-  };
+  const originEl = document.getElementById('dropOrigin'); // círculo del isotipo
 
   function resizeCanvas() {
-    const r = navEl.getBoundingClientRect();
-    canvas.width  = r.width;
-    canvas.height = r.height;
+    // El canvas cubre nav entero — extendemos a la izquierda para incluir el logo
+    const navRect  = navEl.getBoundingClientRect();
+    const logoRect = document.getElementById('navLogo').getBoundingClientRect();
+    const left     = logoRect.left;
+    const right    = navRect.right;
+
+    canvas.style.position = 'fixed';
+    canvas.style.top      = navRect.top + 'px';
+    canvas.style.left     = left + 'px';
+    canvas.style.width    = (right - left) + 'px';
+    canvas.style.height   = navRect.height + 'px';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex   = '150';
+    canvas.width  = right - left;
+    canvas.height = navRect.height;
+
+    // offset para calcular posiciones relativas
+    canvas._offsetX = left;
+    canvas._offsetY = navRect.top;
   }
+
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
+  // Obtener centro del elemento relativo al canvas
   function getCenter(el) {
-    const nr = navEl.getBoundingClientRect();
-    const er = el.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
     return {
-      x: er.left - nr.left + er.width  / 2,
-      y: er.top  - nr.top  + er.height / 2,
+      x: r.left + r.width  / 2 - (canvas._offsetX || 0),
+      y: r.top  + r.height / 2 - (canvas._offsetY || 0),
     };
   }
 
-  // Iniciar gota desde el logo
-  function startDrop(targetLink) {
-    const logo = getCenter(logoEl);
-    if (!drop.active) {
-      drop.x  = logo.x;
-      drop.y  = logo.y;
-      drop.rx = 18;
-      drop.ry = 14;
-    }
-    drop.active   = true;
-    drop.talpha   = 1;
+  // ── Estado de la gota ────────────────────────
+  const drop = {
+    // posición y radios actuales
+    x: 0, y: 0,
+    rx: 0, ry: 0,
+    // targets
+    tx: 0, ty: 0,
+    trx: 0, try: 0,
+    // visibilidad
+    alpha: 0, talpha: 0,
+    // animación
+    phase: 0,
+    state: 'hidden', // 'hidden' | 'born' | 'traveling' | 'resting' | 'hiding'
+    birthTimer: 0,
+  };
 
-    const t = getCenter(targetLink);
-    drop.tx  = t.x;
-    drop.ty  = canvas.height / 2;
-    drop.trx = targetLink.getBoundingClientRect().width  / 2 + 8;
-    drop.try = canvas.height / 2 - 6;
+  function getOriginCenter() {
+    // centro del círculo rojo del isotipo
+    return getCenter(originEl);
+  }
+
+  function triggerDrop(targetLink) {
+    const origin = getOriginCenter();
+    const target = getCenter(targetLink);
+    const linkW  = targetLink.getBoundingClientRect().width;
+
+    if (drop.state === 'hidden') {
+      // Nace desde el punto exacto del isotipo, muy pequeña
+      drop.x   = origin.x;
+      drop.y   = origin.y;
+      drop.rx  = 8;
+      drop.ry  = 8;
+      drop.alpha = 0;
+    }
+
+    drop.talpha = 0.92;
+    drop.tx     = target.x;
+    drop.ty     = origin.y; // misma altura que el origen
+    drop.trx    = linkW / 2 + 10;
+    drop.try    = canvas.height / 2 - 4;
+    drop.state  = 'traveling';
   }
 
   function hideDrop() {
+    drop.state  = 'hiding';
     drop.talpha = 0;
-    drop.trx    = 18;
-    drop.try    = 14;
+    drop.trx    = 8;
+    drop.try    = 8;
+    // vuelve al origen
+    const o = getOriginCenter();
+    drop.tx = o.x;
+    drop.ty = o.y;
   }
 
-  navLinks.forEach(a => {
-    a.addEventListener('mouseenter', () => startDrop(a));
-  });
-  navEl.addEventListener('mouseleave', () => hideDrop());
+  navLinks.forEach(a => a.addEventListener('mouseenter', () => triggerDrop(a)));
+  navEl.addEventListener('mouseleave', hideDrop);
 
-  // ── Render loop ─────────────────────────────
-  function lerp(a, b, t) { return a + (b - a) * t; }
+  // ── Draw glass drop ──────────────────────────
+  function drawDrop(cx, cy, rx, ry, alpha, phase) {
+    if (alpha < 0.01 || rx < 1) return;
 
-  function drawIridescentDrop(cx, cy, rx, ry, alpha, phase) {
-    if (alpha < 0.005) return;
-
-    const W = rx * 2 + 4;
-    const H = ry * 2 + 4;
-    const x0 = cx - rx - 2;
-    const y0 = cy - ry - 2;
+    const W  = rx * 2 + 4, H  = ry * 2 + 4;
+    const x0 = cx - rx - 2, y0 = cy - ry - 2;
 
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    // ── Clip a la elipse ─────────────────────
+    // Clip
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.clip();
 
-    // ── 1. Relleno base — casi transparente, tinte muy sutil ──
-    const base = ctx.createRadialGradient(cx, cy - ry * 0.3, 0, cx, cy, Math.max(rx, ry) * 1.1);
-    base.addColorStop(0,   'rgba(255,255,255,0.04)');
-    base.addColorStop(0.6, 'rgba(255,255,255,0.02)');
-    base.addColorStop(1,   'rgba(0,0,0,0.18)');
+    // 1. Base translúcida muy suave
+    const base = ctx.createRadialGradient(cx, cy - ry * 0.2, 0, cx, cy, Math.max(rx, ry) * 1.1);
+    base.addColorStop(0,   'rgba(255,255,255,0.06)');
+    base.addColorStop(0.7, 'rgba(255,255,255,0.02)');
+    base.addColorStop(1,   'rgba(0,0,0,0.22)');
     ctx.fillStyle = base;
     ctx.fillRect(x0, y0, W, H);
 
-    // ── 2. Iridiscencia animada — colores que cyclan suavemente ──
-    const h1 = (phase * 18) % 360;
-    const h2 = (h1 + 60) % 360;
-    const h3 = (h1 + 140) % 360;
-
+    // 2. Iridiscencia animada — hues que rotan lentamente
+    const h1 = (phase * 15) % 360;
+    const h2 = (h1 + 80)  % 360;
+    const h3 = (h1 + 180) % 360;
     const iri = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx, cy + ry);
-    iri.addColorStop(0,    `hsla(${h1},70%,75%,0.18)`);
-    iri.addColorStop(0.3,  `hsla(${h2},80%,80%,0.12)`);
-    iri.addColorStop(0.6,  `hsla(${h3},60%,70%,0.15)`);
-    iri.addColorStop(1,    `hsla(${h1},70%,65%,0.1)`);
+    iri.addColorStop(0,    `hsla(${h1},65%,82%,0.2)`);
+    iri.addColorStop(0.33, `hsla(${h2},75%,78%,0.14)`);
+    iri.addColorStop(0.66, `hsla(${h3},60%,75%,0.18)`);
+    iri.addColorStop(1,    `hsla(${h1},65%,70%,0.12)`);
     ctx.fillStyle = iri;
     ctx.fillRect(x0, y0, W, H);
 
-    // ── 3. Highlight principal — destello blanco arriba-izquierda ──
-    const hl1 = ctx.createRadialGradient(
-      cx - rx * 0.3, cy - ry * 0.45, 0,
-      cx - rx * 0.3, cy - ry * 0.45, rx * 0.7
+    // 3. Highlight principal — luz difusa arriba-izquierda
+    const hl = ctx.createRadialGradient(
+      cx - rx * 0.28, cy - ry * 0.42, 0,
+      cx - rx * 0.28, cy - ry * 0.42, Math.max(rx, ry) * 0.75
     );
-    hl1.addColorStop(0,   'rgba(255,255,255,0.55)');
-    hl1.addColorStop(0.4, 'rgba(255,255,255,0.12)');
-    hl1.addColorStop(1,   'rgba(255,255,255,0)');
-    ctx.fillStyle = hl1;
+    hl.addColorStop(0,   'rgba(255,255,255,0.52)');
+    hl.addColorStop(0.45,'rgba(255,255,255,0.08)');
+    hl.addColorStop(1,   'rgba(255,255,255,0)');
+    ctx.fillStyle = hl;
     ctx.fillRect(x0, y0, W, H);
 
-    // ── 4. Micro-highlight — punto de luz pequeño y duro ──
-    const hl2 = ctx.createRadialGradient(
-      cx - rx * 0.5, cy - ry * 0.55, 0,
-      cx - rx * 0.5, cy - ry * 0.55, rx * 0.18
+    // 4. Micro-highlight — punto de luz duro y pequeño
+    const mhl = ctx.createRadialGradient(
+      cx - rx * 0.48, cy - ry * 0.52, 0,
+      cx - rx * 0.48, cy - ry * 0.52, rx * 0.2
     );
-    hl2.addColorStop(0,   'rgba(255,255,255,0.9)');
-    hl2.addColorStop(1,   'rgba(255,255,255,0)');
-    ctx.fillStyle = hl2;
+    mhl.addColorStop(0, 'rgba(255,255,255,0.88)');
+    mhl.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = mhl;
     ctx.fillRect(x0, y0, W, H);
 
-    // ── 5. Sombra interna en borde inferior — profundidad ──
-    const shadow = ctx.createLinearGradient(cx, cy, cx, cy + ry);
-    shadow.addColorStop(0,   'rgba(0,0,0,0)');
-    shadow.addColorStop(1,   'rgba(0,0,0,0.25)');
-    ctx.fillStyle = shadow;
+    // 5. Sombra interna inferior — profundidad
+    const shad = ctx.createLinearGradient(cx, cy + ry * 0.3, cx, cy + ry);
+    shad.addColorStop(0, 'rgba(0,0,0,0)');
+    shad.addColorStop(1, 'rgba(0,0,0,0.28)');
+    ctx.fillStyle = shad;
     ctx.fillRect(x0, y0, W, H);
 
-    // ── Borde exterior — línea fina glass ──────
     ctx.restore();
+
+    // 6. Borde glass — gradiente de blanco a transparente
     ctx.save();
-    ctx.globalAlpha = alpha * 0.7;
+    ctx.globalAlpha = alpha * 0.65;
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-
-    // Borde con gradiente para efecto glass
-    const borderGrad = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx, cy + ry);
-    borderGrad.addColorStop(0,   'rgba(255,255,255,0.6)');
-    borderGrad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
-    borderGrad.addColorStop(1,   'rgba(255,255,255,0.05)');
-    ctx.strokeStyle = borderGrad;
-    ctx.lineWidth = 1;
+    const border = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx, cy + ry);
+    border.addColorStop(0,   'rgba(255,255,255,0.7)');
+    border.addColorStop(0.4, 'rgba(255,255,255,0.2)');
+    border.addColorStop(1,   'rgba(255,255,255,0.04)');
+    ctx.strokeStyle = border;
+    ctx.lineWidth   = 1;
     ctx.stroke();
-
     ctx.restore();
   }
 
+  // ── Lerp helper ─────────────────────────────
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  // ── Render loop ─────────────────────────────
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const sp = 0.13;
+    const sp = 0.11; // velocidad de la gota
+
     drop.x     = lerp(drop.x,     drop.tx,     sp);
     drop.y     = lerp(drop.y,     drop.ty,     sp);
     drop.rx    = lerp(drop.rx,    drop.trx,    sp);
     drop.ry    = lerp(drop.ry,    drop.try,    sp);
-    drop.alpha = lerp(drop.alpha, drop.talpha, 0.1);
-    drop.phase += 0.04;
+    drop.alpha = lerp(drop.alpha, drop.talpha, 0.09);
+    drop.phase += 0.03;
 
-    if (drop.alpha > 0.005) {
-      drawIridescentDrop(drop.x, drop.y, drop.rx, drop.ry, drop.alpha, drop.phase);
+    // Si está ocultándose y llegó al origen, resetear
+    if (drop.state === 'hiding' && drop.alpha < 0.01) {
+      drop.state = 'hidden';
+      const o = getOriginCenter();
+      drop.x  = o.x; drop.y  = o.y;
+      drop.rx = 0;   drop.ry = 0;
     }
 
-    if (!drop.active && drop.alpha < 0.005) {
-      // Resetear posición al logo para el próximo trigger
-      const logo = getCenter(logoEl);
-      drop.x  = logo.x;
-      drop.y  = canvas.height / 2;
-      drop.rx = 18;
-      drop.ry = 14;
-    }
-
+    drawDrop(drop.x, drop.y, drop.rx, drop.ry, drop.alpha, drop.phase);
     requestAnimationFrame(render);
   }
 
-  // Inicializar posición en el logo
-  const logoC = getCenter(logoEl);
-  drop.x  = logoC.x;
-  drop.y  = canvas.height / 2;
-  drop.tx = logoC.x;
-  drop.ty = canvas.height / 2;
+  // Inicializar en el origen
+  const o = getOriginCenter();
+  drop.x = o.x; drop.y = o.y;
+  drop.tx = o.x; drop.ty = o.y;
 
   render();
 </script>
