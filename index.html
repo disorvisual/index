@@ -20,6 +20,11 @@
 * { cursor: none !important; }
 a, button, input, textarea, select, label { cursor: none !important; }
 
+/* Halftone en textos de proyectos */
+.project-info-text {
+  filter: url(#halftone);
+}
+
 :root {
   --black: #000;
   --white: #fff;
@@ -269,6 +274,12 @@ nav {
   position: relative;
   overflow: hidden;
 }
+
+.project-client,
+.project-name {
+  filter: url(#halftone);
+  will-change: filter;
+}
 .project-info::after {
   content: '';
   position: absolute;
@@ -402,6 +413,7 @@ footer::after {
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+  padding-top: 3rem;
 }
 
 .footer-logo img { height: 52px; width: auto; display: block; }
@@ -461,7 +473,7 @@ footer::after {
 
 .footer-bottom {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   padding-top: 2rem;
   border-top: 0.5px solid rgba(255,255,255,0.07);
@@ -474,13 +486,41 @@ footer::after {
   text-transform: uppercase;
 }
 
-.footer-brand { display: flex; align-items: center; text-decoration: none; }
-.footer-brand img { height: 22px; width: auto; display: block; }
 
 </style>
 </head>
 <body>
 
+<svg width="0" height="0" style="position:absolute;overflow:hidden">
+  <defs>
+    <!-- Halftone: convierte el texto en puntos que se dispersan en los bordes -->
+    <filter id="halftone" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <!-- 1. Blur suave para que los bordes se disuelvan -->
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blurred"/>
+      <!-- 2. Turbulencia para darle irregularidad street -->
+      <feTurbulence type="fractalNoise" baseFrequency="0.04 0.06" numOctaves="2" seed="3" result="noise"/>
+      <!-- 3. Desplazar los píxeles con el noise — efecto dispersión -->
+      <feDisplacementMap in="blurred" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
+      <!-- 4. Threshold duro para convertir a blanco/negro puro -->
+      <feComponentTransfer in="displaced" result="thresholded">
+        <feFuncR type="discrete" tableValues="0 0 0 0 0 1 1 1"/>
+        <feFuncG type="discrete" tableValues="0 0 0 0 0 1 1 1"/>
+        <feFuncB type="discrete" tableValues="0 0 0 0 0 1 1 1"/>
+        <feFuncA type="discrete" tableValues="0 0 0 0 0 1 1 1"/>
+      </feComponentTransfer>
+      <!-- 5. Puntear — simula halftone con morfología -->
+      <feMorphology in="thresholded" operator="erode" radius="0.4" result="eroded"/>
+      <!-- 6. Turbulencia para textura de puntos irregular -->
+      <feTurbulence type="fractalNoise" baseFrequency="0.18 0.18" numOctaves="1" seed="7" result="dots"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 8 -3" in="dots" result="dotmask"/>
+      <!-- 7. Aplicar máscara de puntos sobre el texto -->
+      <feComposite in="eroded" in2="dotmask" operator="in" result="halftoned"/>
+      <!-- 8. Noise extra de dispersión en bordes -->
+      <feTurbulence type="turbulence" baseFrequency="0.9" numOctaves="4" seed="12" result="edgenoise"/>
+      <feDisplacementMap in="halftoned" in2="edgenoise" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
 <div class="cursor" id="cursor"></div>
 
 <!-- NAV -->
@@ -642,9 +682,6 @@ footer::after {
   </div>
   <div class="footer-bottom">
     <p class="footer-copy">© 2025 Disor. Todos los derechos reservados.</p>
-    <a href="#" class="footer-brand">
-      <img src="blanco@3x.png" alt="DISOR">
-    </a>
   </div>
 </footer>
 
